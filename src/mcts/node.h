@@ -146,6 +146,13 @@ class Node {
 
   // Returns sum of policy priors which have had at least one playout.
   float GetVisitedPolicy() const;
+
+  // Returns maximum policy value.
+  float GetMaxPolicy() const;
+
+  // Set max_policy_ after policy head of node is evaluated
+  void SetMaxPolicy(float val);
+
   uint32_t GetN() const { return n_; }
   uint32_t GetNInFlight() const { return n_in_flight_; }
   uint32_t GetChildrenVisits() const { return n_ > 0 ? n_ - 1 : 0; }
@@ -272,6 +279,9 @@ class Node {
   float d_ = 0.0f;
   // Sum of policy priors which have had at least one playout.
   float visited_policy_ = 0.0f;
+  // Maximum policy value
+  float max_policy_ = 0.0f;
+
   // How many completed visits this node had.
   uint32_t n_ = 0;
   // (AKA virtual loss.) How many threads currently process this node (started

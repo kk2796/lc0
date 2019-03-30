@@ -199,6 +199,13 @@ Node::Iterator Node::Edges() { return {edges_, &child_}; }
 
 float Node::GetVisitedPolicy() const { return visited_policy_; }
 
+void Node::SetMaxPolicy(float val) {
+  assert(0.0f <= val && val <= 1.0f);
+  max_policy_ = val;
+}
+
+float Node::GetMaxPolicy() const { return max_policy_s; }
+
 Edge* Node::GetEdgeToNode(const Node* node) const {
   assert(node->parent_ == this);
   assert(node->index_ < edges_.size());

@@ -1256,6 +1256,13 @@ void SearchWorker::FetchSingleNodeResult(NodeToProcess* node_to_process,
   if (params_.GetNoise() && node == search_->root_node_) {
     ApplyDirichletNoise(node, 0.25, 0.3);
   }
+
+  // Cycle through all edges to find max policy for node
+  for (auto edge : node->Edges()) {
+    if (edge.edge()->GetP() > node->GetMaxPolicy() ) {
+      node->SetMaxPolicy(edge.edge()->GetP());
+    }
+  } 
 }
 
 // 6. Propagate the new nodes' information to all their parents in the tree.
