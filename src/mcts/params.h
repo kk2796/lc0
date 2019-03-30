@@ -79,7 +79,12 @@ class SearchParams {
   }
   float GetSmartPruningFactor() const { return kSmartPruningFactor; }
   bool GetFpuAbsolute(bool at_root) const { return at_root ? kFpuAbsoluteAtRoot : kFpuAbsolute; }
-  float GetFpuValue(bool at_root) const { return at_root ? kFpuValueAtRoot : kFpuValue; }
+  bool GetPolicyScaledFpu(bool at_root) const {
+    return at_root ? kPolicyScaledFpuAtRoot : kPolicyScaledFpu;
+  }
+  float GetFpuValue(bool at_root) const {
+    return at_root ? kFpuValueAtRoot : kFpuValue;
+  }
   int GetCacheHistoryLength() const { return kCacheHistoryLength; }
   float GetPolicySoftmaxTemp() const { return kPolicySoftmaxTemp; }
   int GetMaxCollisionEvents() const { return kMaxCollisionEvents; }
@@ -144,6 +149,8 @@ class SearchParams {
   const bool kNoise;
   const float kSmartPruningFactor;
   const bool kFpuAbsolute;
+  const bool kPolicyScaledFpu;
+  const bool kPolicyScaledFpuAtRoot;
   const float kFpuValue;
   const bool kFpuAbsoluteAtRoot;
   const float kFpuValueAtRoot;

@@ -113,7 +113,9 @@ const OptionId SearchParams::kFpuStrategyId{
     "changes search behavior to visit unvisited nodes earlier or later by "
     "using a placeholder eval before checking the network. The value specified "
     "with --fpu-value results in \"reduction\" subtracting that value from the "
-    "parent eval while \"absolute\" directly uses that value."};
+    "parent eval while \"absolute\" directly uses that value.  \"Policy\" strategy "
+	"works like absolute but unvisited edge value is set between -1 and parent-Q, "
+    "scaled to where edge-policy falls between 0 and maxPolicy."  };
 const OptionId SearchParams::kFpuValueId{
     "fpu-value", "FpuValue",
     "\"First Play Urgency\" value used to adjust unvisited node eval based on "
@@ -198,7 +200,7 @@ void SearchParams::Populate(OptionsParser* options) {
   options->Add<BoolOption>(kVerboseStatsId) = false;
   options->Add<BoolOption>(kLogLiveStatsId) = false;
   options->Add<FloatOption>(kSmartPruningFactorId, 0.0f, 10.0f) = 1.33f;
-  std::vector<std::string> fpu_strategy = {"reduction", "absolute"};
+  std::vector<std::string> fpu_strategy = {"reduction", "absolute", "policy"};
   options->Add<ChoiceOption>(kFpuStrategyId, fpu_strategy) = "reduction";
   options->Add<FloatOption>(kFpuValueId, -100.0f, 100.0f) = 1.2f;
   fpu_strategy.push_back("same");
@@ -231,11 +233,17 @@ SearchParams::SearchParams(const OptionsDict& options)
       kFpuAbsolute(options.Get<std::string>(kFpuStrategyId.GetId()) ==
                    "absolute"),
       kFpuValue(options.Get<float>(kFpuValueId.GetId())),
+      kPolicyScaledFpu(options.Get<std::string>(kFpuStrategyId.GetId()) ==
+					"policy"),
       kFpuAbsoluteAtRoot(
           (options.Get<std::string>(kFpuStrategyAtRootId.GetId()) == "same" &&
            kFpuAbsolute) ||
           options.Get<std::string>(kFpuStrategyAtRootId.GetId()) == "absolute"),
-      kFpuValueAtRoot(options.Get<std::string>(kFpuStrategyAtRootId.GetId()) ==
+      kPolicyScaledFpuAtRoot(
+          (options.Get<std::string>(kFpuStrategyAtRootId.GetId()) == "same" &&
+           kPolicyScaledFpu) ||
+          options.Get<std::string>(kFpuStrategyAtRootId.GetId()) == "policy"),
+	 kFpuValueAtRoot(options.Get<std::string>(kFpuStrategyAtRootId.GetId()) ==
                               "same"
                           ? kFpuValue
                           : options.Get<float>(kFpuValueAtRootId.GetId())),
