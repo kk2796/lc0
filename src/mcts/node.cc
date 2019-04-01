@@ -204,7 +204,7 @@ void Node::SetMaxPolicy(float val) {
   max_policy_ = val;
 }
 
-float Node::GetMaxPolicy() const { return max_policy_s; }
+float Node::GetMaxPolicy() const { return max_policy_; }
 
 Edge* Node::GetEdgeToNode(const Node* node) const {
   assert(node->parent_ == this);
@@ -218,7 +218,8 @@ std::string Node::DebugString() const {
   std::ostringstream oss;
   oss << " Term:" << is_terminal_ << " This:" << this << " Parent:" << parent_
       << " Index:" << index_ << " Child:" << child_.get()
-      << " Sibling:" << sibling_.get() << " Q:" << q_ << " N:" << n_
+      << " Sibling:" << sibling_.get() << " Q:" << q_ << " N:" << n_ 
+	  << " MaxPolicy:" << max_policy_ 
       << " N_:" << n_in_flight_ << " Edges:" << edges_.size();
   return oss.str();
 }

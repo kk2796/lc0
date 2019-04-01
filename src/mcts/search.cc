@@ -125,11 +125,12 @@ void Search::SendUciInfo() REQUIRES(nodes_mutex_) {
     uci_infos.emplace_back(common_info);
     auto& uci_info = uci_infos.back();
     if (score_type == "centipawn") {
-      uci_info.score = 290.680623072 * tan(1.548090806 * edge.GetQ(0));
+      uci_info.score = 290.680623072 * tan(1.548090806 * edge.GetQ(0,false,0,0));
+    
     } else if (score_type == "win_percentage") {
-      uci_info.score = edge.GetQ(0) * 5000 + 5000;
+      uci_info.score = edge.GetQ(0, false, 0,0) * 5000 + 5000;
     } else if (score_type == "Q") {
-      uci_info.score = edge.GetQ(0) * 10000;
+      uci_info.score = edge.GetQ(0, false, 0, 0) * 10000;
     }
     if (params_.GetMultiPv() > 1) uci_info.multipv = multipv;
     bool flip = played_history_.IsBlackToMove();
@@ -192,7 +193,7 @@ inline float GetFpu(const SearchParams& params, Node* node, bool is_root_node) {
   const auto value = params.GetFpuValue(is_root_node);
   return params.GetFpuAbsolute(is_root_node)
              ? value
-             : -node->GetQ() - value * std::sqrt(node->GetVisitedPolicy());
+			 : -node->GetQ() - value * std::sqrt(node->GetVisitedPolicy());
 }
 
 inline float ComputeCpuct(const SearchParams& params, uint32_t N) {
@@ -209,15 +210,21 @@ std::vector<std::string> Search::GetVerboseStats(Node* node,
   const float cpuct = ComputeCpuct(params_, node->GetN());
   const float U_coeff =
       cpuct * std::sqrt(std::max(node->GetChildrenVisits(), 1u));
+  const bool policy_scaled_fpu = params_.GetPolicyScaledFpu(node == root_node_);
+  const float max_policy = node->GetMaxPolicy();
+  const float parent_q = node->GetQ();
+
 
   std::vector<EdgeAndNode> edges;
   for (const auto& edge : node->Edges()) edges.push_back(edge);
 
   std::sort(
       edges.begin(), edges.end(),
-      [&fpu, &U_coeff](EdgeAndNode a, EdgeAndNode b) {
-        return std::forward_as_tuple(a.GetN(), a.GetQ(fpu) + a.GetU(U_coeff)) <
-               std::forward_as_tuple(b.GetN(), b.GetQ(fpu) + b.GetU(U_coeff));
+      [&fpu, &U_coeff, &policy_scaled_fpu, &max_policy, &parent_q](EdgeAndNode a, EdgeAndNode b) {
+        return std::forward_as_tuple(
+					a.GetN(), a.GetQ(fpu, policy_scaled_fpu, max_policy, parent_q) + a.GetU(U_coeff)) <
+               std::forward_as_tuple(
+					b.GetN(), b.GetQ(fpu, policy_scaled_fpu, max_policy,parent_q) + b.GetU(U_coeff));
       });
 
   std::vector<std::string> infos;
@@ -236,7 +243,8 @@ std::vector<std::string> Search::GetVerboseStats(Node* node,
     oss << "(P: " << std::setw(5) << std::setprecision(2) << edge.GetP() * 100
         << "%) ";
 
-    oss << "(Q: " << std::setw(8) << std::setprecision(5) << edge.GetQ(fpu)
+    oss << "(Q: " << std::setw(8) << std::setprecision(5) << 
+			edge.GetQ(fpu, policy_scaled_fpu, max_policy, parent_q)
         << ") ";
 
     oss << "(D: " << std::setw(6) << std::setprecision(3) << edge.GetD()
@@ -246,7 +254,9 @@ std::vector<std::string> Search::GetVerboseStats(Node* node,
         << ") ";
 
     oss << "(Q+U: " << std::setw(8) << std::setprecision(5)
-        << edge.GetQ(fpu) + edge.GetU(U_coeff) << ") ";
+        << edge.GetQ(fpu, policy_scaled_fpu, max_policy, parent_q) +
+               edge.GetU(U_coeff)
+        << ") ";
 
     oss << "(V: ";
     optional<float> v;
@@ -471,7 +481,9 @@ std::pair<float, float> Search::GetBestEval() const {
   float parent_d = root_node_->GetD();
   if (!root_node_->HasChildren()) return {parent_q, parent_d};
   EdgeAndNode best_edge = GetBestChildNoTemperature(root_node_);
-  return {best_edge.GetQ(parent_q), best_edge.GetD()};
+  return {best_edge.GetQ(parent_q, true, root_node_->GetMaxPolicy(),
+                         root_node_->GetQ()),
+          best_edge.GetD()};
 }
 
 std::pair<Move, Move> Search::GetBestMove() {
@@ -555,7 +567,7 @@ std::vector<EdgeAndNode> Search::GetBestChildrenNoTemperature(Node* parent,
             root_limit.end()) {
       continue;
     }
-    edges.emplace_back(edge.GetN(), edge.GetQ(0), edge.GetP(), edge);
+    edges.emplace_back(edge.GetN(), edge.GetQ(0,false,0,0), edge.GetP(), edge);
   }
   const auto middle = (static_cast<int>(edges.size()) > count)
                           ? edges.begin() + count
@@ -596,7 +608,14 @@ EdgeAndNode Search::GetBestChildWithTemperature(Node* parent,
       continue;
     }
     if (edge.GetN() + offset > max_n) max_n = edge.GetN() + offset;
-    if (edge.GetQ(fpu) > max_eval) max_eval = edge.GetQ(fpu);
+    if (edge.GetQ(
+		fpu,
+		params_.GetPolicyScaledFpu(parent==root_node_),
+		parent->GetMaxPolicy(),parent->GetQ()) > max_eval) 
+			max_eval = edge.GetQ(
+				fpu,
+				params_.GetPolicyScaledFpu(parent==root_node_),
+                    parent->GetMaxPolicy(), parent->GetQ());
   }
 
   // No move had enough visits for temperature, so use default child criteria
@@ -611,7 +630,9 @@ EdgeAndNode Search::GetBestChildWithTemperature(Node* parent,
             root_limit.end()) {
       continue;
     }
-    if (edge.GetQ(fpu) < min_eval) continue;
+    if (edge.GetQ(fpu, params_.GetPolicyScaledFpu(parent == root_node_),
+                  parent->GetMaxPolicy(), parent->GetQ()) < min_eval)
+      continue;
     sum += std::pow(
         std::max(0.0f, (static_cast<float>(edge.GetN()) + offset) / max_n),
         1 / temperature);
@@ -630,7 +651,9 @@ EdgeAndNode Search::GetBestChildWithTemperature(Node* parent,
             root_limit.end()) {
       continue;
     }
-    if (edge.GetQ(fpu) < min_eval) continue;
+    if (edge.GetQ(fpu, params_.GetPolicyScaledFpu(parent == root_node_),
+                  parent->GetMaxPolicy() ,parent->GetQ()) < min_eval)
+      continue;
     if (idx-- == 0) return edge;
   }
   assert(false);
@@ -953,7 +976,8 @@ SearchWorker::NodeToProcess SearchWorker::PickNodeToExtend(
         }
         ++possible_moves;
       }
-      const float Q = child.GetQ(fpu);
+      const float Q = child.GetQ(fpu, params_.GetPolicyScaledFpu(is_root_node),
+                                 node->GetMaxPolicy(), node->GetQ());
       const float score = child.GetU(puct_mult) + Q;
       if (score > best) {
         second_best = best;
@@ -967,8 +991,9 @@ SearchWorker::NodeToProcess SearchWorker::PickNodeToExtend(
     }
 
     if (second_best_edge) {
-      int estimated_visits_to_change_best =
-          best_edge.GetVisitsToReachU(second_best, puct_mult, fpu);
+      int estimated_visits_to_change_best = best_edge.GetVisitsToReachU(
+          second_best, puct_mult, fpu, params_.GetPolicyScaledFpu(is_root_node),
+          node->GetMaxPolicy(), node->GetQ());
       // Only cache for n-2 steps as the estimate created by GetVisitsToReachU
       // has potential rounding errors and some conservative logic that can push
       // it up to 2 away from the real value.
@@ -1154,7 +1179,12 @@ int SearchWorker::PrefetchIntoCache(Node* node, int budget) {
   for (auto edge : node->Edges()) {
     if (edge.GetP() == 0.0f) continue;
     // Flip the sign of a score to be able to easily sort.
-    scores.emplace_back(-edge.GetU(puct_mult) - edge.GetQ(fpu), edge);
+    scores.emplace_back(
+        -edge.GetU(puct_mult) -
+            edge.GetQ(fpu,
+				params_.GetPolicyScaledFpu(node == search_->root_node_),
+                      node->GetMaxPolicy(), node->GetQ()),
+        edge);
   }
 
   size_t first_unsorted_index = 0;
@@ -1184,7 +1214,9 @@ int SearchWorker::PrefetchIntoCache(Node* node, int budget) {
     if (i != scores.size() - 1) {
       // Sign of the score was flipped for sorting, so flip it back.
       const float next_score = -scores[i + 1].first;
-      const float q = edge.GetQ(-fpu);
+      const float q = edge.GetQ(
+          -fpu, params_.GetPolicyScaledFpu(node == search_->root_node_),
+          node->GetMaxPolicy(), node->GetQ());
       if (next_score > q) {
         budget_to_spend =
             std::min(budget, int(edge.GetP() * puct_mult / (next_score - q) -
@@ -1263,6 +1295,8 @@ void SearchWorker::FetchSingleNodeResult(NodeToProcess* node_to_process,
       node->SetMaxPolicy(edge.edge()->GetP());
     }
   } 
+  LOGFILE << "kk2796_log: " << node->DebugString();
+
 }
 
 // 6. Propagate the new nodes' information to all their parents in the tree.

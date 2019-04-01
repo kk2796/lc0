@@ -344,9 +344,14 @@ class EdgeAndNode {
   Node* node() const { return node_; }
 
   // Proxy functions for easier access to node/edge.
-  float GetQ(float default_q) const {
-    return (node_ && node_->GetN() > 0) ? node_->GetQ() : default_q;
+  float GetQ(float default_q, bool policy_scaled_fpu, float max_p, float parent_q) const {
+    if (node_ && node_->GetN() > 0) return node_->GetQ();
+    return (policy_scaled_fpu) 
+		? -1 + ((edge_->GetP() / max_p) * (parent_q - (-1))) 
+		: default_q; 
+
   }
+
   float GetD() const {
     return (node_ && node_->GetN() > 0) ? node_->GetD() : 0.0f;
   }
@@ -370,9 +375,9 @@ class EdgeAndNode {
     return numerator * GetP() / (1 + GetNStarted());
   }
 
-  int GetVisitsToReachU(float target_score, float numerator,
-                        float default_q) const {
-    const auto q = GetQ(default_q);
+  int GetVisitsToReachU(float target_score, float numerator, float default_q,
+                        bool policy_scaled_fpu, float max_p, float parent_q) const {
+    const auto q = GetQ(default_q, policy_scaled_fpu, max_p, parent_q);
     if (q >= target_score) return std::numeric_limits<int>::max();
     const auto n1 = GetNStarted() + 1;
     return std::max(
